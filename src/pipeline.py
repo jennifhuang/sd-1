@@ -166,24 +166,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-import os
-import requests
-from pydantic import RootModel, BaseModel
-
-INPUTS_ENDPOINT = os.getenv("INPUTS_ENDPOINT", "https://edge-inputs.api.wombo.ai")
-
-def random_inputs() -> list[TextToImageRequest]:
-    response = requests.get(
-        f"{INPUTS_ENDPOINT}/current_batch", headers={
-            "Content-Type": "application/json"
-        },
-    )
-
-    response.raise_for_status()
-
-    return RootModel[list[TextToImageRequest]].model_validate_json(response.text).root
-
-
 class StableDiffusionXLPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
@@ -869,7 +851,7 @@ class StableDiffusionXLPipeline(
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
-        end_cfg: float = 0.8,
+        end_cfg: float = 0.4,
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
@@ -1331,58 +1313,33 @@ class StableDiffusionXLPipeline(
 
 from onediffx import compile_pipe
 
-def load_pipeline() -> StableDiffusionXLPipeline:
-    pipeline = StableDiffusionXLPipeline.from_pretrained(
-        "./models/newdream-sdxl-20",
-        torch_dtype=torch.float16,
-        local_files_only=True,
-    ).to("cuda")
-    
+def load_pipeline(pipeline=None) -> StableDiffusionXLPipeline:
+    if not pipeline:
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "./models/newdream-sdxl-20",
+            torch_dtype=torch.float16,
+            local_files_only=True,
+        ).to("cuda")
     pipeline = compile_pipe(pipeline)
-    pipeline("")
-    
-    pipeline.C_ = {}
-    requests = random_inputs()
-
-    for request in requests:
-        if request.seed is None:
-            generator = None
-        else:
-            generator = Generator(pipeline.device).manual_seed(request.seed)
-
-        image = pipeline(
-            prompt=request.prompt,
-            negative_prompt=request.negative_prompt,
-            width=request.width,
-            height=request.height,
-            generator=generator,
-            end_cfg=0.9,
-            num_inference_steps=20,
-        ).images[0]
-
-        pipeline.C_[request.prompt] = image
-    
+    pipeline.super_compile()
+    pipeline(prompt="", num_inference_steps=10)
 
     return pipeline
 
 
 
 def infer(request: TextToImageRequest, pipeline: StableDiffusionXLPipeline) -> Image:
-    if request.prompt in pipeline.C_:
-        pipeline("", num_inference_steps=10)
-        return pipeline.C_[request.prompt]
+    if request.seed is None:
+        generator = None
     else:
-        if request.seed is None:
-            generator = None
-        else:
-            generator = Generator(pipeline.device).manual_seed(request.seed)
-    
-        return pipeline(
-            prompt=request.prompt,
-            negative_prompt=request.negative_prompt,
-            width=request.width,
-            height=request.height,
-            generator=generator,
-            end_cfg=0.9,
-            num_inference_steps=20,
-        ).images[0]
+        generator = Generator(pipeline.device).manual_seed(request.seed)
+
+    return pipeline(
+        prompt=request.prompt,
+        negative_prompt=request.negative_prompt,
+        width=request.width,
+        height=request.height,
+        generator=generator,
+        end_cfg=0.98,
+        num_inference_steps=10,
+    ).images[0]
