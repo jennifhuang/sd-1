@@ -1356,7 +1356,7 @@ def load_pipeline() -> StableDiffusionXLPipeline:
             width=request.width,
             height=request.height,
             generator=generator,
-            end_cfg=0.6,
+            end_cfg=0.9,
             num_inference_steps=20,
         ).images[0]
 
@@ -1383,6 +1383,6 @@ def infer(request: TextToImageRequest, pipeline: StableDiffusionXLPipeline) -> I
             width=request.width,
             height=request.height,
             generator=generator,
-            end_cfg=0.6,
+            end_cfg=0.9,
             num_inference_steps=20,
         ).images[0]
